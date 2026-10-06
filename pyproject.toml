@@ -6,6 +6,7 @@ dependencies = [
 	"deepgram-sdk>=7.7.1,<8.0.0",
 	"google-genai>=1.0.0,<2.0.0",
 	"fastapi[standard]>=0.141.1",
+	"reportlab>=5.0.1",
 ]
 
 [dependency-groups]

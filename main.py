@@ -60,5 +60,6 @@ class _send_transcripts:
 					"intent": result.intent,
 					"response": result.response,
 					"operations": result.operations,
+					"report_path": result.report_path,
 				}
 			)
