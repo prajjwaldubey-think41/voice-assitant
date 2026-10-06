@@ -3,12 +3,14 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import uuid
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from google import genai
 
-from tools import AuditTrail, LedgerManager, PythonCodeInterpreter, WebSearcher
+from tools import AuditReportGenerator, AuditTrail, LedgerManager, PythonCodeInterpreter, WebSearcher
 
 
 @dataclass(frozen=True, slots=True)
@@ -16,17 +18,19 @@ class AssistantResult:
     intent: str
     response: str
     operations: list[dict[str, Any]]
+    report_path: str | None = None
 
 
 class GeminiOrchestrator:
     """Translate user text into validated tool commands and execute them."""
 
-    def __init__(self, api_key: str | None = None) -> None:
+    def __init__(self, api_key: str | None = None, report_dir: str = "reports") -> None:
         self.api_key = api_key or os.getenv("GEMINI_API_KEY", "dummy-gemini-api-key")
         self.ledger = LedgerManager()
         self.web_searcher = WebSearcher()
         self.interpreter = PythonCodeInterpreter()
         self.audit_trail = AuditTrail()
+        self.report_generator = AuditReportGenerator(report_dir)
 
     async def process(self, query: str) -> AssistantResult:
         plan = await self._translate(query)
@@ -35,7 +39,19 @@ class GeminiOrchestrator:
         for command in plan.get("commands", []):
             operations.append(await self._execute(command))
         response = str(plan.get("response", "Operation completed."))
-        return AssistantResult(intent=intent, response=response, operations=operations)
+        report_path = None
+        if operations:
+            report_path = str(self._write_report(query, operations))
+        return AssistantResult(
+            intent=intent, response=response, operations=operations, report_path=report_path
+        )
+
+    def _write_report(self, query: str, operations: list[dict[str, Any]]) -> Path:
+        """Write a PDF audit report covering the entries of the completed transaction."""
+        entries = self.audit_trail.retrieve()[-len(operations):]
+        return self.report_generator.generate(
+            entries, uuid.uuid4().hex[:12], query, self.ledger.snapshot()
+        )
 
     async def _translate(self, query: str) -> dict[str, Any]:
         if self.api_key.startswith("dummy-"):
